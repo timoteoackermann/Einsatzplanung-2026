@@ -138,4 +138,22 @@ def create_pdf(data, wochentage_daten, kw_text):
     styles = getSampleStyleSheet()
     
     title_style = ParagraphStyle(
-        'TitleStyle', parent=styles
+        'TitleStyle', parent=styles['Heading1'], fontSize=18, leading=22, textColor=colors.HexColor("#1f2937"), spaceAfter=15
+    )
+    company_style = ParagraphStyle(
+        'CompanyHeader', fontName='Helvetica-Bold', fontSize=18, leading=22, textColor=colors.HexColor("#1f2937"), alignment=2
+    )
+    cell_header_style = ParagraphStyle(
+        'CellHeaderStyle', parent=styles['Normal'], fontSize=9, leading=11, fontName='Helvetica-Bold', textColor=colors.HexColor("#1f2937"), alignment=1
+    )
+    cell_bold_style = ParagraphStyle(
+        'CellBoldStyle', parent=styles['Normal'], fontSize=9, leading=11, fontName='Helvetica-Bold', textColor=colors.HexColor("#1f2937")
+    )
+    cell_text_style = ParagraphStyle(
+        'CellTextStyle', parent=styles['Normal'], fontSize=8, leading=10, textColor=colors.HexColor("#374151")
+    )
+    cell_abw_style = ParagraphStyle(
+        'CellAbwStyle', parent=styles['Normal'], fontSize=8, leading=10, textColor=colors.HexColor("#b91c1c")
+    )
+
+    title_p = Paragraph(f"Einsatzplanung — {kw_text} 2026", title_
