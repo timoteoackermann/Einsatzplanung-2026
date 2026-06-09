@@ -130,4 +130,12 @@ def create_pdf(data, wochentage_daten, kw_text):
         buffer, 
         pagesize=landscape(A4), 
         rightMargin=20, 
-        leftMargin=
+        leftMargin=20, 
+        topMargin=20, 
+        bottomMargin=20
+    )
+    story = []
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'TitleStyle', parent=styles
