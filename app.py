@@ -3,6 +3,7 @@ import json
 import os
 import datetime
 import io
+import glob
 
 # PDF-Bibliotheken importieren
 from reportlab.lib.pagesizes import A4, landscape
@@ -386,12 +387,11 @@ if modus == "👀 Kompakte Wochenübersicht":
             tag = t["name"]
             arbeit = data["einsatz"].get(prj, {}).get(tag, {}).get("arbeit", "—")
             mitarbeiter = ", ".join(data["einsatz"].get(prj, {}).get(tag, {}).get("mitarbeiter", []))
-            if not mitarbeiter:
-                mitarbeiter = "<i>Keine Mitarbeiter</i>"
-                
-            html_table += f"<td style='border: 1px solid #ddd; padding: 12px; vertical-align: top;'>"
+            
+            html_table += f"<td style='border: 1px solid #ddd; padding: 12px; vertical-align: top;'>
             html_table += f"<div style='font-size: 0.9em; color: #555; margin-bottom: 5px;'>🛠️ {arbeit}</div>"
-            html_table += f"<div style='font-size: 0.95em; font-weight: 500;'>👥 {mitarbeiter}</div>"
+            if mitarbeiter:  # Zeigt Mitarbeiter und Symbol NUR an, wenn Daten vorhanden sind
+                html_table += f"<div style='font-size: 0.95em; font-weight: 500;'>👥 {mitarbeiter}</div>"
             html_table += "</td>"
         html_table += "</tr>"
         
@@ -406,6 +406,84 @@ if modus == "👀 Kompakte Wochenübersicht":
     html_table += "</table>"
     
     st.markdown(html_table, unsafe_allow_html=True)
+
+    # --- BRANDNEUE FILTERFUNKTION: PROJEKT-HISTORIE ---
+    st.markdown("---")
+    st.markdown("### 🔍 Projekt-Historie (Gesamtzeitraum)")
+    
+    # Alle vorhandenen JSON-Planungsdateien scannen, um lückenlos alle jemals erfassten Projekte zu finden
+    all_stored_projects = set()
+    json_files = glob.glob("planung_kw_*.json")
+    for f in json_files:
+        try:
+            with open(f, "r", encoding="utf-8") as file:
+                p_data = json.load(file)
+                if "projekte" in p_data:
+                    all_stored_projects.update(p_data["projekte"])
+                if "einsatz" in p_data:
+                    all_stored_projects.update(p_data["einsatz"].keys())
+        except:
+            pass
+    sorted_global_projects = sorted(list(all_stored_projects))
+    
+    if sorted_global_projects:
+        selected_global_project = st.selectbox(
+            "Wähle ein Projekt aus, um dessen gesamte Historie anzuzeigen:", 
+            sorted_global_projects, 
+            key="global_project_history_filter"
+        )
+        
+        project_history = []
+        for f in json_files:
+            base = os.path.basename(f)
+            kw_part = base.replace("planung_kw_", "").replace(".json", "")
+            try:
+                kw_num = int(kw_part)
+            except ValueError:
+                continue
+                
+            try:
+                with open(f, "r", encoding="utf-8") as file:
+                    p_data = json.load(file)
+                    if "einsatz" in p_data and selected_global_project in p_data["einsatz"]:
+                        prj_data = p_data["einsatz"][selected_global_project]
+                        for tag_name, details in prj_data.items():
+                            arbeit = details.get("arbeit", "").strip()
+                            mitarbeiter_list = details.get("mitarbeiter", [])
+                            
+                            if arbeit or mitarbeiter_list:
+                                try:
+                                    tag_idx = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"].index(tag_name) + 1
+                                    tag_datum = datetime.date.fromisocalendar(2026, kw_num, tag_idx)
+                                    datum_str = tag_datum.strftime('%d.%m.%Y')
+                                except:
+                                    datum_str = "Datum unleserlich"
+                                    tag_datum = datetime.date(2026, 1, 1)
+                                
+                                project_history.append({
+                                    "datum_sort": tag_datum,
+                                    "kw": kw_num,
+                                    "anzeige_tag": f"{tag_name}, {datum_str} (KW {kw_num})",
+                                    "arbeit": arbeit if arbeit else "—",
+                                    "mitarbeiter": ", ".join(mitarbeiter_list) if mitarbeiter_list else "—"
+                                })
+            except:
+                pass
+        
+        # Chronologisch nach echtem Datum sortieren (älteste Einträge oben, neueste unten)
+        project_history.sort(key=lambda x: x["datum_sort"])
+        
+        if project_history:
+            hist_table = "<table style='width:100%; border-collapse: collapse; font-family: sans-serif; margin-top: 10px;'>"
+            hist_table += "<tr style='background-color: #f4f4f4;'><th style='border: 1px solid #ddd; padding: 10px; text-align: left; width: 25%;'>Datum / Kalenderwoche</th><th style='border: 1px solid #ddd; padding: 10px; text-align: left; width: 45%;'>Durchgeführte Arbeiten</th><th style='border: 1px solid #ddd; padding: 10px; text-align: left; width: 30%;'>Eingeteilte Mitarbeiter</th></tr>"
+            for item in project_history:
+                hist_table += f"<tr><td style='border: 1px solid #ddd; padding: 10px; font-weight: bold;'>{item['anzeige_tag']}</td><td style='border: 1px solid #ddd; padding: 10px;'>{item['arbeit']}</td><td style='border: 1px solid #ddd; padding: 10px;'>{item['mitarbeiter']}</td></tr>"
+            hist_table += "</table>"
+            st.markdown(hist_table, unsafe_allow_html=True)
+        else:
+            st.info("Zu diesem Projekt wurden in den Datensätzen bisher keine konkreten Arbeiten oder Mitarbeiter dokumentiert.")
+    else:
+        st.info("Es wurden noch keine gespeicherten Projektdaten auf dem Server gefunden.")
 
 # --- 8. MODUS B: BEARBEITUNGS-MODUS ---
 else:
@@ -435,7 +513,6 @@ else:
                     def_arb = data["einsatz"].get(prj, {}).get(tag, {}).get("arbeit", "")
                     def_mit = data["einsatz"].get(prj, {}).get(tag, {}).get("mitarbeiter", [])
                     
-                    # SICHERHEITS-FILTER gegen gelöschte Mitarbeiter (verhindert StreamlitAPIException)
                     safe_def_mit = [m for m in def_mit if m in MITARBEITER_POOL]
                     
                     arb_input = st.text_input("Arbeiten:", value=def_arb, key=f"arb_{prj}_{tag}_{kw_auswahl}")
@@ -455,8 +532,6 @@ else:
         tag = t["name"]
         with cols_abw[i]:
             def_abw = data["abwesend"].get(tag, [])
-            
-            # SICHERHEITS-FILTER auch bei den Abwesenheiten
             safe_def_abw = [m for m in def_abw if m in MITARBEITER_POOL]
             
             abw_input = st.multiselect(f"Abwesend am {t['anzeige']}:", MITARBEITER_POOL, default=safe_def_abw, key=f"abw_{tag}_{kw_auswahl}")
