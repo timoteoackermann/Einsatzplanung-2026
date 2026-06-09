@@ -11,7 +11,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-# Setzt das Layout auf "Wide"
+# Setzt das Layout auf "Wide" für maximale Übersicht
 st.set_page_config(layout="wide", page_title="Mitarbeitereinsatzplanung", page_icon="🏗️")
 
 # --- 0. PASSWORT-SCHUTZ ---
@@ -99,7 +99,7 @@ def get_effective_absences(tag_name, tag_date, week_data):
             
     return sorted(absent_display)
 
-# --- POP-UP DIALOG FÜR MANUELLE ZEITRÄUME ---
+# --- POP-UP DIALOG FÜR ZEITRÄUME ---
 @st.dialog("📅 Abwesenheiten & Zeiträume verwalten")
 def manage_absences_dialog(ma_name):
     st.markdown(f"### 👤 {ma_name}")
@@ -192,53 +192,4 @@ def get_filename(kw):
     return f"planung_{kw.lower().replace(' ', '_')}.json"
 
 def load_data(kw):
-    filename = get_filename(kw)
-    if os.path.exists(filename):
-        with open(filename, "r", encoding="utf-8") as f:
-            return json.load(f)
-    else:
-        return {
-            "projekte": ["2026-01 - Baustelle Hauptstraße", "2026-02 - Projekt Nordstadt"],
-            "einsatz": {},
-            "abwesend": {n: [] for n in ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]}
-        }
-
-def save_data(kw, data):
-    with open(get_filename(kw), "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
-
-def get_wochentage_mit_datum(kw_text):
-    try:
-        kw_num = int(kw_text.replace("KW", "").strip())
-        namen = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]
-        tage_liste = []
-        for i, name in enumerate(namen, start=1):
-            tag_datum = datetime.date.fromisocalendar(2026, kw_num, i)
-            tage_liste.append({
-                "name": name,
-                "date": tag_datum,
-                "anzeige": f"{name} ({tag_datum.strftime('%d.%m.')})"
-            })
-        return tage_liste
-    except:
-        return [{"name": n, "date": None, "anzeige": n} for n in ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]]
-
-# --- PDF GENERIERUNG ---
-def create_pdf(data, wochentage_daten, kw_text):
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer, 
-        pagesize=landscape(A4), 
-        rightMargin=20, 
-        leftMargin=20, 
-        topMargin=20, 
-        bottomMargin=20
-    )
-    story = []
-    styles = getSampleStyleSheet()
-    
-    title_style = ParagraphStyle(
-        'TitleStyle', parent=styles['Heading1'], fontSize=16, leading=20, textColor=colors.HexColor("#1f2937"), spaceAfter=12
-    )
-    company_style = ParagraphStyle(
-        'CompanyHeader', fontName='Helvetica
+    filename = get_
