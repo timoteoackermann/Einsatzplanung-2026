@@ -5,7 +5,7 @@ import datetime
 import io
 import glob
 
-# PDF-Bibliotheken importieren (Behebt ModuleNotFoundError)
+# PDF-Bibliotheken importieren
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -32,18 +32,34 @@ if not st.session_state.authenticated:
             st.error("Falsches Passwort!")
     st.stop()
 
-# --- 1. STAMMDATEN-VERWALTUNG (MITARBEITER) ---
+# --- 1. STAMMDATEN-VERWALTUNG (MITARBEITER & PROJEKTE) ---
 STAMMDATEN_FILE = "stammdaten.json"
 
 def load_stammdaten():
     if os.path.exists(STAMMDATEN_FILE):
         with open(STAMMDATEN_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            # Falls die Datei existiert, aber noch keine Projekte hat, Struktur anlegen
+            if "projekte" not in data:
+                data["projekte"] = [
+                    {"nummer": "2026-01", "name": "Baustelle Hauptstraße"},
+                    {"nummer": "2026-02", "name": "Projekt Nordstadt"}
+                ]
+            if "mitarbeiter" not in data:
+                data["mitarbeiter"] = [
+                    "Tobias Wagner", "Alexander Weber", "Christian Schmidt", 
+                    "Dennis Müller", "Stefan Becker", "Michael Hofmann"
+                ]
+            return data
     else:
         return {
             "mitarbeiter": [
                 "Tobias Wagner", "Alexander Weber", "Christian Schmidt", 
                 "Dennis Müller", "Stefan Becker", "Michael Hofmann"
+            ],
+            "projekte": [
+                {"nummer": "2026-01", "name": "Baustelle Hauptstraße"},
+                {"nummer": "2026-02", "name": "Projekt Nordstadt"}
             ]
         }
 
@@ -98,7 +114,7 @@ def load_data(kw):
             return json.load(f)
     else:
         return {
-            "projekte": ["Baustelle Hauptstraße", "Projekt Nordstadt"],
+            "projekte": ["2026-01 - Baustelle Hauptstraße", "2026-02 - Projekt Nordstadt"],
             "einsatz": {},
             "abwesend": {n: [] for n in ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]}
         }
@@ -122,7 +138,7 @@ def get_wochentage_mit_datum(kw_text):
     except:
         return [{"name": n, "anzeige": n} for n in ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]]
 
-# --- PDF GENERIERUNGS-FUNKTION (Klammerfehler behoben) ---
+# --- PDF GENERIERUNGS-FUNKTION ---
 def create_pdf(data, wochentage_daten, kw_text):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -137,10 +153,10 @@ def create_pdf(data, wochentage_daten, kw_text):
     styles = getSampleStyleSheet()
     
     title_style = ParagraphStyle(
-        'TitleStyle', parent=styles['Heading1'], fontSize=18, leading=22, textColor=colors.HexColor("#1f2937"), spaceAfter=15
+        'TitleStyle', parent=styles['Heading1'], fontSize=16, leading=20, textColor=colors.HexColor("#1f2937"), spaceAfter=12
     )
     company_style = ParagraphStyle(
-        'CompanyHeader', fontName='Helvetica-Bold', fontSize=18, leading=22, textColor=colors.HexColor("#1f2937"), alignment=2
+        'CompanyHeader', fontName='Helvetica-Bold', fontSize=16, leading=20, textColor=colors.HexColor("#1f2937"), alignment=2
     )
     cell_header_style = ParagraphStyle(
         'CellHeaderStyle', parent=styles['Normal'], fontSize=9, leading=11, fontName='Helvetica-Bold', textColor=colors.HexColor("#1f2937"), alignment=1
@@ -220,8 +236,8 @@ def create_pdf(data, wochentage_daten, kw_text):
         ('BACKGROUND', (0,0), (-1,1), colors.HexColor("#f3f4f6")),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
         ('LEFTPADDING', (0,0), (-1,-1), 4),
         ('RIGHTPADDING', (0,0), (-1,-1), 4),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#e5e7eb")),
@@ -243,7 +259,7 @@ def create_pdf(data, wochentage_daten, kw_text):
     buffer.seek(0)
     return buffer.getvalue()
 
-# --- 4. SEITENLEISTE (MONATSKALENDER & STRUKTUR) ---
+# --- 4. SEITENLEISTE (NAVIGATION & STAMMDATEN) ---
 st.sidebar.header("🗓️ Kalenderauswahl")
 
 monat_index = MONATE_NAMEN.index(st.session_state.selected_month)
@@ -280,6 +296,7 @@ WOCHENTAGE_DATEN = get_wochentage_mit_datum(kw_auswahl)
 
 st.sidebar.markdown("---")
 
+# --- EXPANDER A: MITARBEITER STAMMDATEN ---
 with st.sidebar.expander("👥 Mitarbeiter-Pool verwalten"):
     st.write("Aktuelles Team:")
     for ma in MITARBEITER_POOL:
@@ -297,10 +314,35 @@ with st.sidebar.expander("👥 Mitarbeiter-Pool verwalten"):
             save_stammdaten(stammdaten)
             st.rerun()
 
+# --- EXPANDER B: PROJEKT STAMMDATEN ---
+with st.sidebar.expander("🏗️ Globaler Projekt-Pool (Stammdaten)"):
+    st.write("Alle hinterlegten Projekte:")
+    for p in stammdaten.get("projekte", []):
+        col_p_info, col_p_del = st.columns([4, 1])
+        col_p_info.write(f"**{p['nummer']}** - {p['name']}")
+        if col_p_del.button("🗑️", key=f"del_global_p_{p['nummer']}"):
+            stammdaten["projekte"].remove(p)
+            save_stammdaten(stammdaten)
+            st.rerun()
+            
+    st.markdown("**Neues Projekt anlegen:**")
+    neue_p_nr = st.text_input("Projektnummer (z.B. 2026-05):", key="add_p_num_input")
+    neuer_p_name = st.text_input("Projektname:", key="add_p_name_input")
+    if st.button("➕ Projekt in Stammdaten sichern"):
+        if neue_p_nr and neuer_p_name:
+            if not any(p['nummer'] == neue_p_nr for p in stammdaten["projekte"]):
+                stammdaten["projekte"].append({"nummer": neue_p_nr, "name": neuer_p_name})
+                save_stammdaten(stammdaten)
+                st.success("Projekt dauerhaft gespeichert!")
+                st.rerun()
+            else:
+                st.error("Diese Projektnummer existiert bereits!")
+
 st.sidebar.markdown("---")
 
-with st.sidebar.expander("🏗️ Baustellen dieser Woche verwalten"):
-    st.write("Aktive Projekte in dieser KW:")
+# --- EXPANDER C: BAUSTELLEN DER AKTUELLEN WOCHE ---
+with st.sidebar.expander("📅 Baustellen dieser Woche verwalten"):
+    st.write("In dieser KW aktive Projekte:")
     for prj in list(data["projekte"]):
         col_prj_name, col_prj_del = st.columns([4, 1])
         col_prj_name.write(f"• {prj}")
@@ -311,10 +353,20 @@ with st.sidebar.expander("🏗️ Baustellen dieser Woche verwalten"):
             save_data(kw_auswahl, data)
             st.rerun()
             
-    neues_projekt = st.text_input("Neue Baustelle hinzufügen:", key="add_prj_input")
-    if st.button("➕ Baustelle hinzufügen"):
-        if neues_projekt and neues_projekt not in data["projekte"]:
-            data["projekte"].append(neues_projekt)
+    st.markdown("**Projekt aus Stammdaten hinzufügen:**")
+    # Formatiert alle Stammdaten-Projekte für die Suchmaske
+    global_p_options = [f"{p['nummer']} - {p['name']}" for p in stammdaten.get("projekte", [])]
+    available_p_options = [opt for opt in global_p_options if opt not in data["projekte"]]
+    
+    # Integrierte Suchfunktion über Streamlit Selectbox (erlaubt Nummer oder Name einzutippen)
+    selected_p_to_add = st.selectbox(
+        "Suchen (Nummer/Name):",
+        options=["-- Projekt auswählen --"] + available_p_options,
+        key="search_select_project_to_kw"
+    )
+    if st.button("➕ Zu dieser Woche hinzufügen"):
+        if selected_p_to_add != "-- Projekt auswählen --":
+            data["projekte"].append(selected_p_to_add)
             save_data(kw_auswahl, data)
             st.rerun()
 
@@ -378,15 +430,15 @@ if modus == "👀 Kompakte Wochenübersicht":
         
     st.markdown(" ")
 
-    # HTML-Tabellengenerierung (Syntax & Layout-Fehler komplett bereinigt)
-    html_table = "<table style='width:100%; border-collapse: collapse; font-family: sans-serif;'>"
-    html_table += "<tr style='background-color: #f4f4f4;'><th style='border: 1px solid #ddd; padding: 12px; text-align: left;'>Projekt / Baustelle</th>"
+    # HTML-Tabellengenerierung: Schriftgrößen optimiert für 17-Zoll Monitore
+    html_table = "<table style='width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 11px;'>"
+    html_table += "<tr style='background-color: #f4f4f4;'><th style='border: 1px solid #ddd; padding: 5px 6px; text-align: left; font-size: 13px;'>Projekt / Baustelle</th>"
     for t in WOCHENTAGE_DATEN:
-        html_table += f"<th style='border: 1px solid #ddd; padding: 12px; text-align: left; width: 18%;'>{t['anzeige']}</th>"
+        html_table += f"<th style='border: 1px solid #ddd; padding: 5px 6px; text-align: left; width: 18%; font-size: 13px;'>{t['anzeige']}</th>"
     html_table += "</tr>"
     
     for prj in data["projekte"]:
-        html_table += f"<tr><td style='border: 1px solid #ddd; padding: 12px; font-weight: bold; background-color: #fafafa;'>{prj}</td>"
+        html_table += f"<tr><td style='border: 1px solid #ddd; padding: 5px 6px; font-weight: bold; background-color: #fafafa; font-size: 13px;'>{prj}</td>"
         for t in WOCHENTAGE_DATEN:
             tag = t["name"]
             
@@ -402,26 +454,26 @@ if modus == "👀 Kompakte Wochenübersicht":
                 arbeit = "—"
             mitarbeiter = ", ".join(mitarbeiter_list)
             
-            html_table += "<td style='border: 1px solid #ddd; padding: 12px; vertical-align: top;'>"
-            html_table += f"<div style='font-size: 0.9em; color: #555; margin-bottom: 5px;'>🛠️ {arbeit}</div>"
+            html_table += "<td style='border: 1px solid #ddd; padding: 5px 6px; vertical-align: top;'>"
+            html_table += f"<div style='font-size: 11px; color: #444; margin-bottom: 3px;'>🛠️ {arbeit}</div>"
             if mitarbeiter:  
-                html_table += f"<div style='font-size: 0.95em; font-weight: 500;'>👥 {mitarbeiter}</div>"
+                html_table += f"<div style='font-size: 11px; font-weight: 600; color: #111;'>👥 {mitarbeiter}</div>"
             html_table += "</td>"
         html_table += "</tr>"
         
-    html_table += "<tr style='background-color: #fff0f0;'><td style='border: 1px solid #ddd; padding: 12px; font-weight: bold; color: #c0392b;'>🛑 ABWESEND</td>"
+    html_table += "<tr style='background-color: #fff0f0;'><td style='border: 1px solid #ddd; padding: 5px 6px; font-weight: bold; color: #c0392b; font-size: 13px;'>🛑 ABWESEND</td>"
     for t in WOCHENTAGE_DATEN:
         tag = t["name"]
         abw_liste = ", ".join(data["abwesend"].get(tag, []))
         if not abw_liste:
             abw_liste = "<i>Niemand abwesend</i>"
-        html_table += f"<td style='border: 1px solid #ddd; padding: 12px; vertical-align: top; color: #c0392b;'>{abw_liste}</td>"
+        html_table += f"<td style='border: 1px solid #ddd; padding: 5px 6px; vertical-align: top; color: #c0392b; font-size: 11px;'>{abw_liste}</td>"
     html_table += "</tr>"
     html_table += "</table>"
     
     st.markdown(html_table, unsafe_allow_html=True)
 
-    # --- FILTERFUNKTION: PROJEKT-HISTORIE ---
+    # --- FILTERFUNKTION: PROJEKT-HISTORIE (Ebenfalls kompakter gestaltet) ---
     st.markdown("---")
     st.markdown("### 🔍 Projekt-Historie (Gesamtzeitraum)")
     
@@ -491,10 +543,10 @@ if modus == "👀 Kompakte Wochenübersicht":
         project_history.sort(key=lambda x: x["datum_sort"])
         
         if project_history:
-            hist_table = "<table style='width:100%; border-collapse: collapse; font-family: sans-serif; margin-top: 10px;'>"
-            hist_table += "<tr style='background-color: #f4f4f4;'><th style='border: 1px solid #ddd; padding: 10px; text-align: left; width: 25%;'>Datum / Kalenderwoche</th><th style='border: 1px solid #ddd; padding: 10px; text-align: left; width: 45%;'>Durchgeführte Arbeiten</th><th style='border: 1px solid #ddd; padding: 10px; text-align: left; width: 30%;'>Eingeteilte Mitarbeiter</th></tr>"
+            hist_table = "<table style='width:100%; border-collapse: collapse; font-family: sans-serif; font-size: 11px; margin-top: 10px;'>"
+            hist_table += "<tr style='background-color: #f4f4f4;'><th style='border: 1px solid #ddd; padding: 5px 6px; text-align: left; width: 25%; font-size: 13px;'>Datum / Kalenderwoche</th><th style='border: 1px solid #ddd; padding: 5px 6px; text-align: left; width: 45%; font-size: 13px;'>Durchgeführte Arbeiten</th><th style='border: 1px solid #ddd; padding: 5px 6px; text-align: left; width: 30%; font-size: 13px;'>Eingeteilte Mitarbeiter</th></tr>"
             for item in project_history:
-                hist_table += f"<tr><td style='border: 1px solid #ddd; padding: 10px; font-weight: bold;'>{item['anzeige_tag']}</td><td style='border: 1px solid #ddd; padding: 10px;'>{item['arbeit']}</td><td style='border: 1px solid #ddd; padding: 10px;'>{item['mitarbeiter']}</td></tr>"
+                hist_table += f"<tr><td style='border: 1px solid #ddd; padding: 5px 6px; font-weight: bold; font-size: 13px;'>{item['anzeige_tag']}</td><td style='border: 1px solid #ddd; padding: 5px 6px;'>{item['arbeit']}</td><td style='border: 1px solid #ddd; padding: 5px 6px;'>{item['mitarbeiter']}</td></tr>"
             hist_table += "</table>"
             st.markdown(hist_table, unsafe_allow_html=True)
         else:
@@ -505,7 +557,28 @@ if modus == "👀 Kompakte Wochenübersicht":
 # --- 8. MODUS B: BEARBEITUNGS-MODUS ---
 else:
     st.markdown("### Planungsdaten eintragen")
-    st.info("Hinweis: Änderungen werden live im Hintergrund vorbereitet. Klicke unten auf 'Speichern', um sie dauerhaft zu sichern.")
+    
+    # Komfort-Feature: Projekt direkt im Bearbeitungsfenster über Suchfunktion hinzufügen
+    st.markdown("#### 🔍 Schnellauswahl: Projekt zur aktuellen Woche hinzufügen")
+    global_p_options = [f"{p['nummer']} - {p['name']}" for p in stammdaten.get("projekte", [])]
+    available_p_options = [opt for opt in global_p_options if opt not in data["projekte"]]
+    
+    col_search_field, col_search_btn = st.columns([3, 1])
+    with col_search_field:
+        selected_p_main = st.selectbox(
+            "Projekt nach Nummer oder Name durchsuchen:",
+            options=["-- Hier tippen zum Suchen --"] + available_p_options,
+            key="main_search_select_project"
+        )
+    with col_search_btn:
+        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+        if st.button("➕ Hinzufügen", key="btn_main_add_project", use_container_width=True):
+            if selected_p_main != "-- Hier tippen zum Suchen --":
+                data["projekte"].append(selected_p_main)
+                save_data(kw_auswahl, data)
+                st.rerun()
+
+    st.markdown("---")
 
     konflikte = []
     for t in WOCHENTAGE_DATEN:
@@ -535,7 +608,6 @@ else:
                         def_arb = ""
                         def_mit = []
                     
-                    # BEHEBT StreamlitAPIException: Filtert verwaiste Daten vor der Übergabe an das Widget
                     safe_def_mit = [m for m in def_mit if m in MITARBEITER_POOL]
                     
                     arb_input = st.text_input("Arbeiten:", value=def_arb, key=f"arb_{prj}_{tag}_{kw_auswahl}_{p_idx}")
@@ -555,8 +627,6 @@ else:
         tag = t["name"]
         with cols_abw[i]:
             def_abw = data["abwesend"].get(tag, [])
-            
-            # Sicherheitsfilter auch für den Abwesenheits-Pool
             safe_def_abw = [m for m in def_abw if m in MITARBEITER_POOL]
             
             abw_input = st.multiselect(f"Abwesend am {t['anzeige']}:", options=MITARBEITER_POOL, default=safe_def_abw, key=f"abw_{tag}_{kw_auswahl}")
