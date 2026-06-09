@@ -15,7 +15,7 @@ from reportlab.platypus import Image
 st.set_page_config(layout="wide", page_title="Mitarbeitereinsatzplanung", page_icon="🏗️")
 
 # --- 0. PASSWORT-SCHUTZ ---
-PASSWORD = "Bauleitung2026"  # Hier dein gewünschtes Passwort eintragen!
+PASSWORD = "Bauleitung2026"
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
@@ -63,7 +63,7 @@ MONATE_NAMEN = [
 wochen_pro_monat = {m: [] for m in MONATE_NAMEN}
 kw_zu_monat_mapping = {}
 
-for kw in range(1, 54):  # 2026 hat 53 ISO-Wochen
+for kw in range(1, 54):
     mo = datetime.date.fromisocalendar(2026, kw, 1)
     do = datetime.date.fromisocalendar(2026, kw, 4)
     so = datetime.date.fromisocalendar(2026, kw, 7)
@@ -78,7 +78,6 @@ for kw in range(1, 54):  # 2026 hat 53 ISO-Wochen
     })
     kw_zu_monat_mapping[kw_key] = monat_name
 
-# Automatisches Ermitteln der heutigen Woche für den Erststart
 heute = datetime.date.today()
 iso_jahr, iso_kw, _ = heute.isocalendar()
 aktuelle_start_kw = f"KW {iso_kw}" if iso_jahr == 2026 else "KW 24"
@@ -87,7 +86,6 @@ if "kw_auswahl" not in st.session_state:
     st.session_state.kw_auswahl = aktuelle_start_kw
 if "selected_month" not in st.session_state:
     st.session_state.selected_month = kw_zu_monat_mapping.get(st.session_state.kw_auswahl, "Juni")
-
 
 # --- 3. PROJEKT- & WOCHENDATEN-VERWALTUNG ---
 def get_filename(kw):
@@ -124,8 +122,7 @@ def get_wochentage_mit_datum(kw_text):
     except:
         return [{"name": n, "anzeige": n} for n in ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]]
 
-
-# --- NEUE, ANGEPASSTE PDF GENERIERUNGS-FUNKTION ---
+# --- PDF GENERIERUNGS-FUNKTION ---
 def create_pdf(data, wochentage_daten, kw_text):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -137,58 +134,27 @@ def create_pdf(data, wochentage_daten, kw_text):
         bottomMargin=20
     )
     story = []
-    
     styles = getSampleStyleSheet()
     
     title_style = ParagraphStyle(
-        'TitleStyle',
-        parent=styles['Heading1'],
-        fontSize=18,
-        leading=22,
-        textColor=colors.HexColor("#1f2937"),
-        spaceAfter=15
+        'TitleStyle', parent=styles['Heading1'], fontSize=18, leading=22, textColor=colors.HexColor("#1f2937"), spaceAfter=15
     )
     company_style = ParagraphStyle(
-        'CompanyHeader',
-        fontName='Helvetica-Bold',
-        fontSize=18,
-        leading=22,
-        textColor=colors.HexColor("#1f2937"),
-        alignment=2 # Rechtsbündig
+        'CompanyHeader', fontName='Helvetica-Bold', fontSize=18, leading=22, textColor=colors.HexColor("#1f2937"), alignment=2
     )
     cell_header_style = ParagraphStyle(
-        'CellHeaderStyle',
-        parent=styles['Normal'],
-        fontSize=9,
-        leading=11,
-        fontName='Helvetica-Bold',
-        textColor=colors.HexColor("#1f2937"),
-        alignment=1 # Zentriert für die Wochentage
+        'CellHeaderStyle', parent=styles['Normal'], fontSize=9, leading=11, fontName='Helvetica-Bold', textColor=colors.HexColor("#1f2937"), alignment=1
     )
     cell_bold_style = ParagraphStyle(
-        'CellBoldStyle',
-        parent=styles['Normal'],
-        fontSize=9,
-        leading=11,
-        fontName='Helvetica-Bold',
-        textColor=colors.HexColor("#1f2937")
+        'CellBoldStyle', parent=styles['Normal'], fontSize=9, leading=11, fontName='Helvetica-Bold', textColor=colors.HexColor("#1f2937")
     )
     cell_text_style = ParagraphStyle(
-        'CellTextStyle',
-        parent=styles['Normal'],
-        fontSize=8,
-        leading=10,
-        textColor=colors.HexColor("#374151")
+        'CellTextStyle', parent=styles['Normal'], fontSize=8, leading=10, textColor=colors.HexColor("#374151")
     )
     cell_abw_style = ParagraphStyle(
-        'CellAbwStyle',
-        parent=styles['Normal'],
-        fontSize=8,
-        leading=10,
-        textColor=colors.HexColor("#b91c1c")
+        'CellAbwStyle', parent=styles['Normal'], fontSize=8, leading=10, textColor=colors.HexColor("#b91c1c")
     )
 
-    # --- HEADER-ZEILE (Titel links, Firma & transparentes Logo rechts) ---
     title_p = Paragraph(f"Einsatzplanung — {kw_text} 2026", title_style)
     
     logo_img = None
@@ -199,10 +165,7 @@ def create_pdf(data, wochentage_daten, kw_text):
             logo_img = None
 
     if logo_img:
-        header_right_table = Table(
-            [[Paragraph("Ackermann Bau", company_style), logo_img]],
-            colWidths=[140, 30]
-        )
+        header_right_table = Table([[Paragraph("Ackermann Bau", company_style), logo_img]], colWidths=[140, 30])
         header_right_table.setStyle(TableStyle([
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('ALIGN', (0,0), (-1,-1), 'RIGHT'),
@@ -213,31 +176,22 @@ def create_pdf(data, wochentage_daten, kw_text):
     else:
         header_content = Paragraph("Ackermann Bau", company_style)
 
-    # Kopf-Tabelle über die gesamte Breite zusammenbauen
     header_table = Table([[title_p, header_content]], colWidths=[550, 252])
-    header_table.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 0),
-    ]))
+    header_table.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('BOTTOMPADDING', (0,0), (-1,-1), 0)]))
     story.append(header_table)
     story.append(Spacer(1, 10))
     
-    # --- MATRIX-TABELLE BAUEN (11 Spalten: 1x Projekt + 5 Tage x 2 Spalten) ---
     table_data = []
-    
-    # Zeile 1: Haupt-Header (Tage)
     header_row_1 = [Paragraph("<b>Projekt / Baustelle</b>", cell_header_style)]
     for t in wochentage_daten:
         header_row_1.extend([Paragraph(f"<b>{t['anzeige']}</b>", cell_header_style), ""])
     table_data.append(header_row_1)
     
-    # Zeile 2: Sub-Header (Arbeiten / Mitarbeiter)
     header_row_2 = [""]
     for _ in wochentage_daten:
         header_row_2.extend([Paragraph("<b>Arbeiten</b>", cell_header_style), Paragraph("<b>Mitarbeiter</b>", cell_header_style)])
     table_data.append(header_row_2)
     
-    # Datenzeilen für die Projekte hinzufügen
     for prj in data["projekte"]:
         row = [Paragraph(prj, cell_bold_style)]
         for t in wochentage_daten:
@@ -252,7 +206,6 @@ def create_pdf(data, wochentage_daten, kw_text):
             row.append(Paragraph(mitarbeiter, cell_text_style))
         table_data.append(row)
         
-    # Abwesenheitszeile am Ende anfügen
     abw_row = [Paragraph("<b>ABWESEND</b>", ParagraphStyle('AbwTitle', parent=cell_bold_style, textColor=colors.HexColor("#b91c1c")))]
     for t in wochentage_daten:
         tag = t["name"]
@@ -262,9 +215,7 @@ def create_pdf(data, wochentage_daten, kw_text):
         abw_row.extend([Paragraph(abw_liste, cell_abw_style), ""])
     table_data.append(abw_row)
     
-    # Breiten-Zuweisung (112pt für Projekte, je 69pt für die restlichen 10 Spalten = 802pt Gesamtbreite)
     col_widths = [112] + [69] * 10
-    
     t_style = [
         ('BACKGROUND', (0,0), (-1,1), colors.HexColor("#f3f4f6")),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
@@ -276,27 +227,21 @@ def create_pdf(data, wochentage_daten, kw_text):
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#e5e7eb")),
         ('BACKGROUND', (0,2), (0,-2), colors.HexColor("#f9fafb")),
         ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#fef2f2")),
-        # Spans für vertikalen Projekt-Header und horizontale Tages-Balken
         ('SPAN', (0,0), (0,1)),
     ]
     
-    # Spans für die Tagesüberschriften einrechnen (Zeile 0)
     for idx in range(1, 11, 2):
         t_style.append(('SPAN', (idx, 0), (idx+1, 0)))
-        
-    # Spans für die Abwesenheitszellen einrechnen (Letzte Zeile)
     abw_row_idx = len(table_data) - 1
     for idx in range(1, 11, 2):
         t_style.append(('SPAN', (idx, abw_row_idx), (idx+1, abw_row_idx)))
         
     t = Table(table_data, colWidths=col_widths, repeatRows=2)
     t.setStyle(TableStyle(t_style))
-    
     story.append(t)
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
-
 
 # --- 4. SEITENLEISTE (MONATSKALENDER & STRUKTUR) ---
 st.sidebar.header("🗓️ Kalenderauswahl")
@@ -319,11 +264,7 @@ except ValueError:
     radio_index = 0
     st.session_state.kw_auswahl = wochen_keys[0]
 
-gewaehlte_woche_anzeige = st.sidebar.radio(
-    "Woche auswählen:", 
-    options=wochen_labels, 
-    index=radio_index
-)
+gewaehlte_woche_anzeige = st.sidebar.radio("Woche auswählen:", options=wochen_labels, index=radio_index)
 
 kw_auswahl = wochen_keys[wochen_labels.index(gewaehlte_woche_anzeige)]
 if kw_auswahl != st.session_state.kw_auswahl:
@@ -399,7 +340,6 @@ for prj in data["projekte"]:
 
 # --- 7. MODUS A: KOMPAKTE WOCHENÜBERSICHT ---
 if modus == "👀 Kompakte Wochenübersicht":
-    
     col_nav_prev, col_nav_next = st.columns(2)
     with col_nav_prev:
         if st.button("⬅️ Vorige Woche", use_container_width=True, key="btn_nav_prev"):
@@ -495,8 +435,11 @@ else:
                     def_arb = data["einsatz"].get(prj, {}).get(tag, {}).get("arbeit", "")
                     def_mit = data["einsatz"].get(prj, {}).get(tag, {}).get("mitarbeiter", [])
                     
+                    # SICHERHEITS-FILTER gegen gelöschte Mitarbeiter (verhindert StreamlitAPIException)
+                    safe_def_mit = [m for m in def_mit if m in MITARBEITER_POOL]
+                    
                     arb_input = st.text_input("Arbeiten:", value=def_arb, key=f"arb_{prj}_{tag}_{kw_auswahl}")
-                    mit_input = st.multiselect("Mitarbeiter:", MITARBEITER_POOL, default=def_mit, key=f"mit_{prj}_{tag}_{kw_auswahl}")
+                    mit_input = st.multiselect("Mitarbeiter:", MITARBEITER_POOL, default=safe_def_mit, key=f"mit_{prj}_{tag}_{kw_auswahl}")
                     
                     if prj not in data["einsatz"]:
                         data["einsatz"][prj] = {}
@@ -512,7 +455,11 @@ else:
         tag = t["name"]
         with cols_abw[i]:
             def_abw = data["abwesend"].get(tag, [])
-            abw_input = st.multiselect(f"Abwesend am {t['anzeige']}:", MITARBEITER_POOL, default=def_abw, key=f"abw_{tag}_{kw_auswahl}")
+            
+            # SICHERHEITS-FILTER auch bei den Abwesenheiten
+            safe_def_abw = [m for m in def_abw if m in MITARBEITER_POOL]
+            
+            abw_input = st.multiselect(f"Abwesend am {t['anzeige']}:", MITARBEITER_POOL, default=safe_def_abw, key=f"abw_{tag}_{kw_auswahl}")
             data["abwesend"][tag] = abw_input
 
     st.markdown("###")
