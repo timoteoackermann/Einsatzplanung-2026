@@ -2,12 +2,19 @@ import streamlit as st
 import json
 import os
 import datetime
+import io
+
+# PDF-Bibliotheken importieren
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
 # Setzt das Layout auf "Wide"
 st.set_page_config(layout="wide", page_title="Mitarbeitereinsatzplanung", page_icon="🏗️")
 
 # --- 0. PASSWORT-SCHUTZ ---
-PASSWORD = "Bauleitung2026"  # <-- Hier dein gewünschtes Passwort eintragen!
+PASSWORD = "Bauleitung2026"  # Hier dein gewünschtes Passwort eintragen!
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
@@ -22,7 +29,7 @@ if not st.session_state.authenticated:
             st.rerun()
         else:
             st.error("Falsches Passwort!")
-    st.stop()  # Stoppt die App hier, falls nicht eingeloggt
+    st.stop()
 
 # --- 1. STAMMDATEN-VERWALTUNG (MITARBEITER) ---
 STAMMDATEN_FILE = "stammdaten.json"
@@ -46,21 +53,40 @@ def save_stammdaten(data):
 stammdaten = load_stammdaten()
 MITARBEITER_POOL = sorted(stammdaten["mitarbeiter"])
 
-# --- 2. DATUMSLOGIK FÜR DIE KW (JAHR 2026) ---
-def get_wochentage_mit_datum(kw_text):
-    try:
-        kw_num = int(kw_text.replace("KW", "").strip())
-        namen = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]
-        tage_liste = []
-        for i, name in enumerate(namen, start=1):
-            tag_datum = datetime.date.fromisocalendar(2026, kw_num, i)
-            tage_liste.append({
-                "name": name,
-                "anzeige": f"{name} ({tag_datum.strftime('%d.%m.')})"
-            })
-        return tage_liste
-    except:
-        return [{"name": n, "anzeige": n} for n in ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]]
+# --- 2. GENERIERUNG DES MONATSKALENDERS (JAHR 2026) ---
+MONATE_NAMEN = [
+    "Januar", "Februar", "März", "April", "Mai", "Juni",
+    "Juli", "August", "September", "Oktober", "November", "Dezember"
+]
+
+wochen_pro_monat = {m: [] for m in MONATE_NAMEN}
+kw_zu_monat_mapping = {}
+
+for kw in range(1, 54):  # 2026 hat 53 ISO-Wochen
+    mo = datetime.date.fromisocalendar(2026, kw, 1)
+    do = datetime.date.fromisocalendar(2026, kw, 4)
+    so = datetime.date.fromisocalendar(2026, kw, 7)
+    
+    monat_name = MONATE_NAMEN[do.month - 1]
+    anzeige_text = f"KW {kw:02d} ({mo.strftime('%d.%m.')} – {so.strftime('%d.%m.')})"
+    kw_key = f"KW {kw}"
+    
+    wochen_pro_monat[monat_name].append({
+        "kw_text": kw_key,
+        "anzeige": anzeige_text
+    })
+    kw_zu_monat_mapping[kw_key] = monat_name
+
+# Automatisches Ermitteln der heutigen Woche für den Erststart
+heute = datetime.date.today()
+iso_jahr, iso_kw, _ = heute.isocalendar()
+aktuelle_start_kw = f"KW {iso_kw}" if iso_jahr == 2026 else "KW 24"
+
+if "kw_auswahl" not in st.session_state:
+    st.session_state.kw_auswahl = aktuelle_start_kw
+if "selected_month" not in st.session_state:
+    st.session_state.selected_month = kw_zu_monat_mapping.get(st.session_state.kw_auswahl, "Juni")
+
 
 # --- 3. PROJEKT- & WOCHENDATEN-VERWALTUNG ---
 def get_filename(kw):
@@ -82,17 +108,168 @@ def save_data(kw, data):
     with open(get_filename(kw), "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
-# --- 4. SEITENLEISTE (NAVIGATION & VERWALTUNG) ---
-st.sidebar.header("🗓️ Verwaltung")
-kw_auswahl = st.sidebar.selectbox("Kalenderwoche wählen", [f"KW {i}" for i in range(1, 53)], index=23)
+def get_wochentage_mit_datum(kw_text):
+    try:
+        kw_num = int(kw_text.replace("KW", "").strip())
+        namen = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]
+        tage_liste = []
+        for i, name in enumerate(namen, start=1):
+            tag_datum = datetime.date.fromisocalendar(2026, kw_num, i)
+            tage_liste.append({
+                "name": name,
+                "anzeige": f"{name} ({tag_datum.strftime('%d.%m.')})"
+            })
+        return tage_liste
+    except:
+        return [{"name": n, "anzeige": n} for n in ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"]]
 
-WOCHENTAGE_DATEN = get_wochentage_mit_datum(kw_auswahl)
+
+# --- PDF GENERIERUNGS-FUNKTION ---
+def create_pdf(data, wochentage_daten, kw_text):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=landscape(A4), 
+        rightMargin=20, 
+        leftMargin=20, 
+        topMargin=20, 
+        bottomMargin=20
+    )
+    story = []
+    
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'TitleStyle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        leading=22,
+        textColor=colors.HexColor("#1f2937"),
+        spaceAfter=15
+    )
+    cell_header_style = ParagraphStyle(
+        'CellHeaderStyle',
+        parent=styles['Normal'],
+        fontSize=10,
+        leading=12,
+        fontName='Helvetica-Bold',
+        textColor=colors.HexColor("#1f2937")
+    )
+    cell_bold_style = ParagraphStyle(
+        'CellBoldStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        fontName='Helvetica-Bold',
+        textColor=colors.HexColor("#1f2937")
+    )
+    cell_text_style = ParagraphStyle(
+        'CellTextStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        textColor=colors.HexColor("#374151")
+    )
+    cell_abw_style = ParagraphStyle(
+        'CellAbwStyle',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        textColor=colors.HexColor("#b91c1c")
+    )
+
+    story.append(Paragraph(f"Mitarbeitereinsatzplanung - {kw_text} (Jahr 2026)", title_style))
+    story.append(Spacer(1, 10))
+    
+    table_data = []
+    header_row = [Paragraph("<b>Projekt / Baustelle</b>", cell_header_style)]
+    for t in wochentage_daten:
+        header_row.append(Paragraph(f"<b>{t['anzeige']}</b>", cell_header_style))
+    table_data.append(header_row)
+    
+    for prj in data["projekte"]:
+        row = [Paragraph(prj, cell_bold_style)]
+        for t in wochentage_daten:
+            tag = t["name"]
+            arbeit = data["einsatz"].get(prj, {}).get(tag, {}).get("arbeit", "-")
+            if not arbeit.strip():
+                arbeit = "-"
+            mitarbeiter_list = data["einsatz"].get(prj, {}).get(tag, {}).get("mitarbeiter", [])
+            mitarbeiter = ", ".join(mitarbeiter_list) if mitarbeiter_list else "Keine Mitarbeiter"
+            
+            cell_content = f"Arbeit: {arbeit}<br/>Team: {mitarbeiter}"
+            row.append(Paragraph(cell_content, cell_text_style))
+        table_data.append(row)
+        
+    abw_row = [Paragraph("<b>ABWESEND</b>", ParagraphStyle('AbwTitle', parent=cell_bold_style, textColor=colors.HexColor("#b91c1c")))]
+    for t in wochentage_daten:
+        tag = t["name"]
+        abw_liste = ", ".join(data["abwesend"].get(tag, []))
+        if not abw_liste:
+            abw_liste = "Niemand abwesend"
+        abw_row.append(Paragraph(abw_liste, cell_abw_style))
+    table_data.append(abw_row)
+    
+    col_widths = [151.89] + [130.0] * 5
+    
+    t = Table(table_data, colWidths=col_widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#f3f4f6")),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('LEFTPADDING', (0,0), (-1,-1), 6),
+        ('RIGHTPADDING', (0,0), (-1,-1), 6),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#e5e7eb")),
+        ('BACKGROUND', (0,1), (0,-2), colors.HexColor("#f9fafb")),
+        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor("#fef2f2")),
+    ]))
+    
+    story.append(t)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+# --- 4. SEITENLEISTE (MONATSKALENDER & STRUKTUR) ---
+st.sidebar.header("🗓️ Kalenderauswahl")
+
+monat_index = MONATE_NAMEN.index(st.session_state.selected_month)
+gewaehlter_monat = st.sidebar.selectbox("Monat wechseln:", MONATE_NAMEN, index=monat_index)
+
+if gewaehlter_monat != st.session_state.selected_month:
+    st.session_state.selected_month = gewaehlter_monat
+    st.session_state.kw_auswahl = wochen_pro_monat[gewaehlter_monat][0]["kw_text"]
+    st.rerun()
+
+wochen_optionen = wochen_pro_monat[st.session_state.selected_month]
+wochen_labels = [w["anzeige"] for w in wochen_optionen]
+wochen_keys = [w["kw_text"] for w in wochen_optionen]
+
+try:
+    radio_index = wochen_keys.index(st.session_state.kw_auswahl)
+except ValueError:
+    radio_index = 0
+    st.session_state.kw_auswahl = wochen_keys[0]
+
+gewaehlte_woche_anzeige = st.sidebar.radio(
+    "Woche auswählen:", 
+    options=wochen_labels, 
+    index=radio_index
+)
+
+kw_auswahl = wochen_keys[wochen_labels.index(gewaehlte_woche_anzeige)]
+if kw_auswahl != st.session_state.kw_auswahl:
+    st.session_state.kw_auswahl = kw_auswahl
+    st.rerun()
 
 if 'current_kw' not in st.session_state or st.session_state.current_kw != kw_auswahl:
     st.session_state.current_kw = kw_auswahl
     st.session_state.data = load_data(kw_auswahl)
 
 data = st.session_state.data
+WOCHENTAGE_DATEN = get_wochentage_mit_datum(kw_auswahl)
 
 st.sidebar.markdown("---")
 
@@ -156,8 +333,41 @@ for prj in data["projekte"]:
 
 # --- 7. MODUS A: KOMPAKTE WOCHENÜBERSICHT ---
 if modus == "👀 Kompakte Wochenübersicht":
+    
+    col_nav_prev, col_nav_next = st.columns(2)
+    with col_nav_prev:
+        if st.button("⬅️ Vorige Woche", use_container_width=True, key="btn_nav_prev"):
+            kw_num = int(st.session_state.kw_auswahl.replace("KW", "").strip())
+            neu_kw = kw_num - 1 if kw_num > 1 else 53
+            st.session_state.kw_auswahl = f"KW {neu_kw}"
+            st.session_state.selected_month = kw_zu_monat_mapping[f"KW {neu_kw}"]
+            st.rerun()
+            
+    with col_nav_next:
+        if st.button("Nächste Woche ➡️", use_container_width=True, key="btn_nav_next"):
+            kw_num = int(st.session_state.kw_auswahl.replace("KW", "").strip())
+            neu_kw = kw_num + 1 if kw_num < 53 else 1
+            st.session_state.kw_auswahl = f"KW {neu_kw}"
+            st.session_state.selected_month = kw_zu_monat_mapping[f"KW {neu_kw}"]
+            st.rerun()
+            
     st.markdown("### Gesamtübersicht der Woche")
     
+    try:
+        pdf_data = create_pdf(data, WOCHENTAGE_DATEN, kw_auswahl)
+        st.download_button(
+            label="📥 Diese Woche als PDF exportieren",
+            data=pdf_data,
+            file_name=f"Einsatzplanung_{kw_auswahl.replace(' ', '_')}.pdf",
+            mime="application/pdf",
+            key="pdf_download_btn",
+            use_container_width=True
+        )
+    except Exception as e:
+        st.error(f"Fehler bei der PDF-Vorbereitung: {e}")
+        
+    st.markdown(" ")
+
     html_table = "<table style='width:100%; border-collapse: collapse; font-family: sans-serif;'>"
     html_table += "<tr style='background-color: #f4f4f4;'><th style='border: 1px solid #ddd; padding: 12px; text-align: left;'>Projekt / Baustelle</th>"
     for t in WOCHENTAGE_DATEN:
